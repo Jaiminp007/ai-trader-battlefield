@@ -1,0 +1,121 @@
+.models-assets-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2.5rem;
+  justify-content: center;
+  margin-top: 2.5rem;
+}
+
+.models-asset-card {
+  background: #003566;
+  border-radius: 18px;
+  box-shadow: 0 4px 18px rgba(0,53,102,0.18);
+  padding: 2rem 2.5rem 1.5rem 2.5rem;
+  min-width: 220px;
+  max-width: 260px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border-left: 7px solid #FFD60A;
+  transition: transform 0.18s;
+}
+.models-asset-card:hover {
+  transform: translateY(-6px) scale(1.03);
+  box-shadow: 0 8px 32px rgba(0,53,102,0.28);
+}
+.models-asset-img {
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+  margin-bottom: 1.2rem;
+  background: #fff;
+  border-radius: 50%;
+  padding: 0.5rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+.models-asset-label {
+  color: #FFD60A;
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 700;
+  font-size: 1.15rem;
+  margin-bottom: 0.2rem;
+  text-align: center;
+}
+
+.models-carousel-outer {
+  width: 100%;
+  overflow: hidden;
+  margin: 0 auto;
+  background: transparent;
+  padding: 0;
+  max-width: 1200px;
+}
+
+.models-carousel-track {
+  display: flex;
+  align-items: center;
+  width: max-content;
+  animation: models-carousel-scroll 22s linear infinite;
+}
+
+@keyframes models-carousel-scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.models-carousel-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 0 2.5rem 0 0;
+  min-width: 120px;
+  background: none;
+}
+
+.models-carousel-img {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  margin-bottom: 0.7rem;
+  background: none;
+  border-radius: 50%;
+  box-shadow: none;
+  padding: 0;
+}
+
+.models-carousel-label {
+  color: #003566;
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 700;
+  font-size: 1.08rem;
+  text-align: center;
+  margin-bottom: 0.2rem;
+  letter-spacing: 0.5px;
+  background: none;
+  -webkit-background-clip: initial;
+  background-clip: initial;
+  -webkit-text-fill-color: initial;
+  text-emphasis-color: initial;
+}
+
+.models-page h2 {
+  color: #001d3d !important;
+}
+
+@media (max-width: 700px) {
+  .models-carousel-item {
+    min-width: 90px;
+    margin-right: 1.2rem;
+  }
+  .models-carousel-img {
+    width: 44px;
+    height: 44px;
+  }
+  .models-carousel-label {
+    font-size: 0.95rem;
+  }
+}
