@@ -6,6 +6,7 @@ from pathlib import Path
 import traceback
 import hashlib
 import random
+import shutil
 
 # Add the open_router directory to path for imports
 sys.path.append(str(Path(__file__).resolve().parent / "open_router"))
@@ -297,6 +298,17 @@ def run_market_simulation(symbol, progress_callback=None):
             else:
                 print(f"  {i}. {row['name']}: {row['roi']:+.2f}% ROI")
     
+    # Clean up generated algorithms
+    print("\n🧹 STEP 4: Cleaning up generated algorithms")
+    print("-" * 40)
+    base_gen = Path(__file__).resolve().parent / "generate_algo"
+    if base_gen.exists() and base_gen.is_dir():
+        try:
+            shutil.rmtree(base_gen)
+            print(f"✅ Successfully deleted folder: {base_gen}")
+        except Exception as e:
+            print(f"❌ Error deleting folder {base_gen}: {e}")
+
     # Return results for API
     return {
         "leaderboard": leaderboard,
