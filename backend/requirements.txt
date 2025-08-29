@@ -1,42 +1,19 @@
 # Core data processing and analysis
-pandas>=2.0.0
-numpy>=1.24.0
+pandas
+numpy
 
 # Yahoo Finance data provider
-yfinance>=0.2.0
+yfinance
 
 # Visualization
-matplotlib>=3.7.0
+matplotlib
 
 # HTTP requests for OpenRouter API
-requests>=2.31.0
+requests
 
 # Environment variables
-python-dotenv>=1.0.0
+python-dotenv
 
-# Timezone handling
-pytz>=2023.3
-
-# Optional: Enhanced visualization
-seaborn>=0.12.0
-
-# Optional: Progress bars
-tqdm>=4.65.0
-
-# Optional: JSON handling (usually included with Python)
-# json
-
-# Optional: UUID generation (usually included with Python)
-# uuid
-
-# Optional: Threading support (usually included with Python)
-# threading
-
-# Optional: Time utilities (usually included with Python)
-# time
-
-# Optional: Data classes (Python 3.7+)
-# dataclasses
-
-# Optional: Type hints (Python 3.5+)
-# typing
+# Web server for API
+Flask
+Flask-Cors

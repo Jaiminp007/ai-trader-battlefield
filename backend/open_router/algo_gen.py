@@ -29,6 +29,64 @@ def list_available_stocks(data_dir: str) -> list:
     except Exception:
         return []
 
+def generate_algorithms_for_agents(selected_agents, ticker, progress_callback=None):
+    """Generate algorithms for specific agents (API-driven)"""
+    if not API_KEY:
+        print("❌ OPENROUTER_API_KEY not found in environment variables")
+        return
+    
+    print(f"🎯 Generating algorithms for {len(selected_agents)} agents using {ticker} data")
+    print(f"✅ Using {len(selected_agents)} models selected from frontend")
+    
+    # Use the selected agents directly (no interactive selection)
+    models_to_use = selected_agents
+    if not models_to_use:
+        print("❌ No models provided for generation")
+        return
+    
+    # Generate algorithm for each selected agent
+    for i, agent_model in enumerate(selected_agents):
+        try:
+            if progress_callback:
+                progress = 30 + (i * 5)  # 30-55% for algorithm generation
+                progress_callback(progress, f"Generating algorithm {i+1}/6 using {agent_model}...")
+            
+            print(f"\n🔄 Generating algorithm {i+1}/6 using {agent_model}...")
+            
+            # Build prompt for this specific model and ticker
+            # Load CSV preview for the selected ticker
+            csv_path = os.path.join(DATA_DIR, f"{ticker}_data.csv")
+            csv_preview = load_csv_preview(csv_path) if os.path.exists(csv_path) else ""
+            prompt = build_generation_prompt(ticker, csv_preview)
+            
+            # Generate algorithm
+            algorithm_code = generate_algorithm(agent_model, prompt)
+            
+            if algorithm_code:
+                # Create output directory if it doesn't exist
+                os.makedirs(OUTPUT_DIR, exist_ok=True)
+                
+                # Save algorithm with model name (sanitize filename)
+                safe_name = agent_model.replace('/', '_').replace('-', '_').replace(':', '_').replace('.', '_')
+                filename = f"generated_algo_{safe_name}.py"
+                filepath = os.path.join(OUTPUT_DIR, filename)
+                
+                with open(filepath, 'w') as f:
+                    f.write(algorithm_code)
+                
+                print(f"✅ Saved: {filename}")
+                print(f"📁 Path: {os.path.abspath(filepath)}")
+            else:
+                print(f"❌ Failed to generate algorithm for {agent_model}")
+                
+        except Exception as e:
+            print(f"❌ Error generating algorithm for {agent_model}: {e}")
+    
+    if progress_callback:
+        progress_callback(55, "All algorithms generated successfully!")
+    
+    print(f"\n🎉 Algorithm generation completed for {ticker}")
+
 def select_stock_file() -> tuple:
     """Interactively ask the user to pick a stock CSV. Returns (ticker, filename, full_path)."""
     files = list_available_stocks(DATA_DIR)
@@ -284,11 +342,15 @@ def generate_algorithm(model_id, prompt_text: str):
         response.raise_for_status()
         content = response.json()['choices'][0]['message']['content'].strip()
         
+        # Clean up code blocks
         if content.startswith("```python"):
             content = content[9:]
+        elif content.startswith("```"):
+            content = content[3:]
         if content.endswith("```"):
             content = content[:-3]
         
+        content = content.strip()
         print(f"✅ SUCCESS: Code received from {model_id}.")
         return content
     except requests.exceptions.RequestException as e:

@@ -105,44 +105,54 @@ class AlgoAgent:
             
         return []
 
-def main():
-    print("🤖 AI TRADER BATTLEFIELD - Market Simulation")
+def run_simulation_with_params(selected_agents, symbol, progress_callback=None):
+    """Run simulation with specific agents and stock symbol (API-driven)"""
+    print(f"🤖 AI TRADER BATTLEFIELD - Market Simulation ({symbol})")
     print("=" * 50)
     
     # Silence noisy future warnings from pandas/yfinance during the battle
     warnings.filterwarnings("ignore", category=FutureWarning)
-
-    symbol = "AAPL"
     
-    # Step 1: Generate trading algorithms (skipped if we already have any)
+    if progress_callback:
+        progress_callback(25, "Starting algorithm generation...")
+    
+    # Generate algorithms for selected agents
     print("\n🧠 STEP 1: Generating Trading Algorithms")
     print("-" * 40)
-    base_gen = Path(__file__).resolve().parent / "generate_algo"
-    base_open = Path(__file__).resolve().parent / "open_router"
-    pre_existing = list(base_gen.glob("generated_algo_*.py")) + list(base_open.glob("generated_algo_*.py"))
-    if pre_existing:
-        print(f"⏭️ Skipping generation: found {len(pre_existing)} existing generated algorithms")
-    else:
-        try:
-            from open_router.algo_gen import main as generate_algorithms
-            selected_ticker = generate_algorithms()
-            if selected_ticker:
-                symbol = selected_ticker
-                print(f"✅ Algorithm generation completed successfully (selected ticker: {symbol})")
-            else:
-                print("✅ Algorithm generation completed successfully")
-        except Exception as e:
-            print(f"⚠️ Warning: Algorithm generation failed: {e}")
-            print("📝 Continuing with existing algorithms...")
     
-    # Step 2: Display 30-day stock chart
+    try:
+        from open_router.algo_gen import generate_algorithms_for_agents
+        generate_algorithms_for_agents(selected_agents, symbol, progress_callback)
+        print("✅ Algorithm generation completed successfully")
+        if progress_callback:
+            progress_callback(60, "Algorithms generated, starting market simulation...")
+    except Exception as e:
+        print(f"⚠️ Warning: Algorithm generation failed: {e}")
+        print("📝 Continuing with existing algorithms...")
+        if progress_callback:
+            progress_callback(50, "Using existing algorithms, starting simulation...")
+    
+    return run_market_simulation(symbol, progress_callback)
+
+def run_market_simulation(symbol, progress_callback=None):
+    """Run the market simulation part"""
+    if progress_callback:
+        progress_callback(65, "Preparing stock chart...")
+    
+    # Step 2: Display 30-day stock chart (skip in API mode to avoid GUI issues)
     print("\n📈 STEP 2: Displaying Stock Chart")
     print("-" * 40)
     try:
-        display_stock_chart(symbol, days=30)
+        if progress_callback:
+            print("⏭️ Skipping chart display in API mode to avoid GUI issues")
+        else:
+            display_stock_chart(symbol, days=30)
     except Exception as e:
         print(f"⚠️ Warning: Chart display failed: {e}")
         print("📝 Continuing without chart...")
+    
+    if progress_callback:
+        progress_callback(70, "Loading trading agents...")
     
     # Step 3: Initialize market simulation
     print("\n🏦 STEP 3: Starting Market Simulation")
@@ -152,7 +162,8 @@ def main():
     tick_src = YFinanceTickGenerator(symbol=symbol, period="1d", interval="1m").stream(sleep_seconds=0.1)  # Reduced sleep
 
     # Discover generated algorithm modules
-    # Paths already defined above for generation skip
+    base_gen = Path(__file__).resolve().parent / "generate_algo"
+    base_open = Path(__file__).resolve().parent / "open_router"
     
     # Discover any generated_algo_*.py files in both locations
     discovered = list(base_gen.glob("generated_algo_*.py")) + list(base_open.glob("generated_algo_*.py"))
@@ -191,11 +202,17 @@ def main():
         return
     
     print(f"📊 Loaded {len(agents)} AI trading agents for simulation")
+    
+    if progress_callback:
+        progress_callback(80, f"Loaded {len(agents)} agents, adding liquidity providers...")
 
     # Add liquidity providers (excluded from the final leaderboard)
     agents.append(MarketMakerAgent("Liquidity_MM1", spread_bps=8.0, quantity=5))
     agents.append(MarketMakerAgent("Liquidity_MM2", spread_bps=12.0, quantity=3))
     print("➕ Added liquidity providers: Liquidity_MM1, Liquidity_MM2")
+    
+    if progress_callback:
+        progress_callback(85, "Starting market simulation...")
 
     # Create simulation with ORDER BOOK ENABLED and faster processing
     from market.market_simulation import SimulationConfig
@@ -220,7 +237,11 @@ def main():
 
     # Run the simulation
     try:
+        if progress_callback:
+            progress_callback(90, "Running market simulation...")
         results = sim.run(ticks=tick_src, max_ticks=60, log=True)
+        if progress_callback:
+            progress_callback(95, "Calculating final results...")
     except KeyboardInterrupt:
         print("\n⏹️ Simulation interrupted by user")
     except Exception as e:
@@ -275,6 +296,19 @@ def main():
                 print(f"🥉 {row['name']}: {row['roi']:+.2f}% ROI")
             else:
                 print(f"  {i}. {row['name']}: {row['roi']:+.2f}% ROI")
+    
+    # Return results for API
+    return {
+        "leaderboard": leaderboard,
+        "winner": leaderboard[0] if leaderboard else None,
+        "symbol": symbol,
+        "total_agents": len(leaderboard)
+    }
+
+def main():
+    """Original main function for direct execution"""
+    symbol = "AAPL"
+    return run_market_simulation(symbol)
 
 
 if __name__ == "__main__":

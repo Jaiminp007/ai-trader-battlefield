@@ -22,7 +22,7 @@ const imageMap = {
   'Qwen': qwenIcon
 };
 
-const CustomDropdown = ({ agents, selected, onSelect }) => {
+const CustomDropdown = ({ agents, selected, onSelect, disabledAgents = new Set() }) => {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
 
@@ -71,8 +71,12 @@ const CustomDropdown = ({ agents, selected, onSelect }) => {
               {agentList.map((agent) => (
                 <div
                   key={agent}
-                  className={`dropdown-option ${selected === agent ? 'selected' : ''}`}
-                  onClick={() => handleSelect(agent)}
+                  className={`dropdown-option ${selected === agent ? 'selected' : ''} ${disabledAgents.has(agent) && selected !== agent ? 'disabled' : ''}`}
+                  aria-disabled={disabledAgents.has(agent) && selected !== agent}
+                  onClick={() => {
+                    if (disabledAgents.has(agent) && selected !== agent) return; // prevent selecting duplicates
+                    handleSelect(agent);
+                  }}
                 >
                   <img 
                     src={imageMap[company]} 
