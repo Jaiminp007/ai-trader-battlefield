@@ -1,9 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './Dashboard.css';
+import CustomDropdown from './CustomDropdown'; // Import the new component
 
 const Dashboard = () => {
   const [navOpen, setNavOpen] = useState(false);
   const [active, setActive] = useState('home');
+  const [agents, setAgents] = useState({});
+  const [selectedAgents, setSelectedAgents] = useState({
+    'left-1': null,
+    'left-2': null,
+    'left-3': null,
+    'right-1': null,
+    'right-2': null,
+    'right-3': null,
+  });
+
+  useEffect(() => {
+    fetch('/api/ai_agents')
+      .then(response => response.json())
+      .then(data => setAgents(data))
+      .catch(error => console.error('Error fetching agents:', error));
+  }, []);
 
   // Navigation handler for all nav links
   const handleNav = (e, to) => {
@@ -17,6 +34,10 @@ const Dashboard = () => {
     } else if (to === 'contact') {
       window.location.href = '/contact';
     }
+  };
+
+  const handleAgentSelect = (id, agent) => {
+    setSelectedAgents(prev => ({ ...prev, [id]: agent }));
   };
 
   return (
@@ -72,30 +93,31 @@ const Dashboard = () => {
 
       {/* Main Content Area */}
       <div className="dashboard-content">
-        {/* Left Side Elements */}
-        <div className="side-element left-element left-element-1">
-          <div className="side-circle left-circle"></div>
-        </div>
-        <div className="side-element left-element left-element-2">
-          <div className="side-circle left-circle"></div>
-        </div>
-        <div className="side-element left-element left-element-3">
-          <div className="side-circle left-circle"></div>
-        </div>
+        {[1, 2, 3].map(i => (
+          <React.Fragment key={i}>
+            <div className={`side-element left-element left-element-${i}`}>
+              <div className="side-circle left-circle">
+                <CustomDropdown 
+                  agents={agents} 
+                  selected={selectedAgents[`left-${i}`]} 
+                  onSelect={(agent) => handleAgentSelect(`left-${i}`, agent)}
+                />
+              </div>
+            </div>
+            <div className={`side-element right-element right-element-${i}`}>
+              <div className="side-circle right-circle">
+                <CustomDropdown 
+                  agents={agents} 
+                  selected={selectedAgents[`right-${i}`]} 
+                  onSelect={(agent) => handleAgentSelect(`right-${i}`, agent)}
+                />
+              </div>
+            </div>
+          </React.Fragment>
+        ))}
 
         {/* Center Blue Box */}
         <div className="center-box"></div>
-
-        {/* Right Side Elements */}
-        <div className="side-element right-element right-element-1">
-          <div className="side-circle right-circle"></div>
-        </div>
-        <div className="side-element right-element right-element-2">
-          <div className="side-circle right-circle"></div>
-        </div>
-        <div className="side-element right-element right-element-3">
-          <div className="side-circle right-circle"></div>
-        </div>
 
         {/* Start Button */}
         <button className="start-button">

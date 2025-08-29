@@ -1,13 +1,13 @@
 import React from 'react';
 import './Models.css';
-import openaiIcon from '../assets/openai_icon.png';
-import googleIcon from '../assets/google_icon.png';
-import anthropicIcon from '../assets/anthropic_icon.png';
-import metaIcon from '../assets/meta_icon.png';
-import qwenIcon from '../assets/qwen_icon.png';
-import mistralIcon from '../assets/mistral_icon.png';
-import deepseekIcon from '../assets/deepseek_icon.png';
-import grokIcon from '../assets/grok_icon.png';
+import openaiIcon from '../assets/openai.png';
+import googleIcon from '../assets/google.png';
+import anthropicIcon from '../assets/anthropic.png';
+import metaIcon from '../assets/meta.png';
+import qwenIcon from '../assets/qwen.png';
+import mistralIcon from '../assets/mistral.png';
+import deepseekIcon from '../assets/deepseek.png';
+import grokIcon from '../assets/grok.png';
 
 const modelAssets = [
 	{ label: 'OpenAI', img: openaiIcon },
