@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './Dashboard.css';
 import CustomDropdown from './CustomDropdown'; // Import the new component
 
@@ -19,6 +19,14 @@ const Dashboard = () => {
   const [simulationStatus, setSimulationStatus] = useState(null);
   const [simulationResults, setSimulationResults] = useState(null);
   const [isRunning, setIsRunning] = useState(false);
+  const [showInstructions, setShowInstructions] = useState(true);
+  const [progress, setProgress] = useState(0);
+  const [currentTask, setCurrentTask] = useState('');
+  const [genStates, setGenStates] = useState({}); // { modelName: 'pending'|'generating'|'done' }
+  const lastGeneratingRef = useRef(null);
+  const [codePreview, setCodePreview] = useState('');
+  const [codePreviewModel, setCodePreviewModel] = useState('');
+  const lastPreviewModelRef = useRef('');
 
   useEffect(() => {
     const apiBase = process.env.REACT_APP_API_BASE_URL || '';
@@ -81,6 +89,14 @@ const Dashboard = () => {
     setIsRunning(true);
     setSimulationResults(null);
     setSimulationStatus('Starting simulation...');
+  setShowInstructions(false);
+  setProgress(0);
+  // Initialize per-agent generation states
+  const uniqueAgents = Array.from(new Set(agents));
+  const initStates = {};
+  uniqueAgents.forEach(name => { initStates[name] = 'pending'; });
+  setGenStates(initStates);
+  lastGeneratingRef.current = null;
 
     try {
       const apiBase = process.env.REACT_APP_API_BASE_URL || '';
@@ -123,12 +139,28 @@ const Dashboard = () => {
         setSimulationResults(data.results);
         setSimulationStatus('Simulation completed!');
         setIsRunning(false);
+        setProgress(100);
+        // keep last preview visible until user navigates back
       } else if (data.status === 'error') {
         setSimulationStatus(`Error: ${data.error}`);
         setIsRunning(false);
       } else {
-        const message = data.message || `Running... ${data.progress || 0}%`;
+        const pct = typeof data.progress === 'number' ? data.progress : 0;
+        const message = data.message || `Running... ${pct}%`;
         setSimulationStatus(message);
+        setProgress(pct);
+        if (data.code_preview) {
+          const incomingModel = String(data.preview_model || '');
+          const incomingCode = String(data.code_preview);
+          // Only update when a new model preview arrives or content changes
+          if (incomingModel !== lastPreviewModelRef.current || incomingCode !== codePreview) {
+            setCodePreview(incomingCode);
+            setCodePreviewModel(incomingModel);
+            lastPreviewModelRef.current = incomingModel;
+          }
+        }
+        // Parse and reflect generation progress per model if present
+        parseProgressMessage(message);
         // Continue polling
         setTimeout(() => pollSimulationStatus(simId), 2000);
       }
@@ -137,6 +169,49 @@ const Dashboard = () => {
       setSimulationStatus(`Polling error: ${error.message}`);
       setIsRunning(false);
     }
+  };
+
+  // Interpret backend status messages to maintain per-agent generation states
+  const parseProgressMessage = (message = '') => {
+    setCurrentTask(message);
+    // Pattern: "Generating algorithm X/6 using <model>..."
+    const genMatch = message.match(/Generating algorithm\s+(\d+)\/(\d+)\s+using\s+(.+?)\.\.\./i);
+    if (genMatch) {
+      const model = genMatch[3];
+      const prev = lastGeneratingRef.current;
+      if (prev && prev !== model) {
+        setGenStates(prevState => ({ ...prevState, [prev]: 'done' }));
+      }
+      lastGeneratingRef.current = model;
+      setGenStates(prevState => ({ ...prevState, [model]: 'generating' }));
+      return;
+    }
+    // Mark all done after generation complete message
+    if (/All algorithms generated successfully/i.test(message)) {
+      setGenStates(prev => {
+        const next = { ...prev };
+        Object.keys(next).forEach(k => { next[k] = 'done'; });
+        return next;
+      });
+      lastGeneratingRef.current = null;
+      return;
+    }
+  };
+
+  const handleBack = () => {
+    // Return to instruction screen; keep agent selections
+    setSimulationResults(null);
+    setSimulationStatus(null);
+    setIsRunning(false);
+    setProgress(0);
+    setCurrentTask('');
+    setCodePreview('');
+    setCodePreviewModel('');
+    lastPreviewModelRef.current = '';
+    setGenStates({});
+    lastGeneratingRef.current = null;
+    setShowInstructions(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   return (
@@ -247,8 +322,77 @@ const Dashboard = () => {
           );
         })}
       
-        {/* Center Blue Box */}
-        <div className="center-box"></div>
+        {/* Center Blue Box with conditional content */}
+        <div className="center-box">
+          {showInstructions && !isRunning ? (
+            <div className="instructions">
+              <h2>How the Battle Works</h2>
+              <p>
+                AI Trader Battlefield simulates a fast market session where six AI agents trade the same stock.
+                Strategies are generated, orders are matched in a live order book, and the top ROI wins.
+              </p>
+
+              <h3>What you do</h3>
+              <ol>
+                <li>
+                  Choose a stock dataset from the dropdown at the top right (e.g., AAPL, MSFT).
+                </li>
+                <li>
+                  Pick exactly six unique AI models using the left and right selectors (3 vs 3).
+                </li>
+                <li>
+                  Click <strong>START</strong> to generate strategies and run a ~60‑tick market battle.
+                </li>
+                <li>
+                  Watch the status at the bottom; when finished, view the winner and leaderboard.
+                </li>
+              </ol>
+
+              <div className="tips">
+                <span className="tip-title">Tips</span>
+                <ul>
+                  <li>All agents must be selected before starting.</li>
+                  <li>Mix models from different providers for diverse tactics.</li>
+                  <li>Internet is required for market data and model generation.</li>
+                </ul>
+              </div>
+            </div>
+          ) : (
+            <div className="progress-panel">
+              <h2>Simulation Status</h2>
+              <div className="progress-bar">
+                <div className="progress-fill" style={{ width: `${Math.min(100, Math.max(0, progress))}%` }} />
+              </div>
+              <div className="current-task">{currentTask || simulationStatus || 'Preparing...'}</div>
+
+              {/* Per-agent generation states */}
+              <div className="gen-list">
+                {Object.keys(genStates).length > 0 ? (
+                  Object.entries(genStates).map(([name, state]) => (
+                    <div key={name} className={`gen-item ${state}`}>
+                      <span className={`status ${state}`}>
+                        {state === 'done' ? '✔' : state === 'generating' ? '⏳' : '•'}
+                      </span>
+                      <span className="model-name">{name}</span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="gen-empty">Waiting for algorithm generation…</div>
+                )}
+              </div>
+
+              {/* Live code preview during generation */}
+              {codePreview && (
+                <div className="code-preview">
+                  <div className="code-preview-header">
+                    Preview {codePreviewModel ? `from ${codePreviewModel}` : ''}
+                  </div>
+                  <pre><code>{codePreview}</code></pre>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Start Button */}
         <button 
@@ -290,6 +434,9 @@ const Dashboard = () => {
                   <span className="value">${agent.current_value?.toFixed(2)}</span>
                 </div>
               ))}
+              <div className="results-actions">
+                <button className="back-button" onClick={handleBack}>Back</button>
+              </div>
             </div>
           </div>
         )}

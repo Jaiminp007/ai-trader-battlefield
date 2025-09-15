@@ -123,15 +123,17 @@ def run_simulation_with_params(selected_agents, symbol, progress_callback=None):
     
     try:
         from open_router.algo_gen import generate_algorithms_for_agents
-        generate_algorithms_for_agents(selected_agents, symbol, progress_callback)
+        success = generate_algorithms_for_agents(selected_agents, symbol, progress_callback)
+        if not success:
+            raise RuntimeError("Algorithm generation failed or incomplete; aborting simulation.")
         print("✅ Algorithm generation completed successfully")
         if progress_callback:
             progress_callback(60, "Algorithms generated, starting market simulation...")
     except Exception as e:
-        print(f"⚠️ Warning: Algorithm generation failed: {e}")
-        print("📝 Continuing with existing algorithms...")
+        # Do not continue when generation fails
         if progress_callback:
-            progress_callback(50, "Using existing algorithms, starting simulation...")
+            progress_callback(50, f"Algorithm generation error: {e}")
+        raise
     
     return run_market_simulation(symbol, progress_callback)
 
@@ -166,6 +168,30 @@ def run_market_simulation(symbol, progress_callback=None):
     base_gen = Path(__file__).resolve().parent / "generate_algo"
     base_open = Path(__file__).resolve().parent / "open_router"
     
+    # Sanitize previously generated files that may contain markdown code fences
+    def _sanitize_generated_files(path: Path):
+        try:
+            for pyf in path.glob("generated_algo_*.py"):
+                try:
+                    txt = pyf.read_text(encoding="utf-8")
+                except Exception:
+                    continue
+                if "```" in txt:
+                    # Strip leading/trailing code fences
+                    lines = [ln for ln in txt.splitlines() if not ln.strip().startswith("```")]
+                    cleaned = "\n".join(lines).strip() + "\n"
+                    # Do NOT inject stubs; if execute_trade is missing, let loading fail
+                    try:
+                        pyf.write_text(cleaned, encoding="utf-8")
+                        print(f"🧹 Sanitized code fences in {pyf.name}")
+                    except Exception as ie:
+                        print(f"⚠️ Failed to sanitize {pyf.name}: {ie}")
+        except Exception:
+            pass
+
+    _sanitize_generated_files(base_gen)
+    _sanitize_generated_files(base_open)
+
     # Discover any generated_algo_*.py files in both locations
     discovered = list(base_gen.glob("generated_algo_*.py")) + list(base_open.glob("generated_algo_*.py"))
     
@@ -225,11 +251,12 @@ def run_market_simulation(symbol, progress_callback=None):
         enable_order_book=True,  # ENABLE ORDER BOOK for proper matching
         initial_cash=10000.0,
         initial_stock=5,
+    mm_initial_stock=150,
         # Enable margin and short selling to increase volume/ROE dispersion
         allow_negative_cash=True,
         cash_borrow_limit=20000.0,
         allow_short=True,
-        max_short_shares=25,
+    max_short_shares=50,
         # Expire unfilled limit orders each tick to free reservations
         order_ttl_ticks=1
     )
@@ -298,16 +325,7 @@ def run_market_simulation(symbol, progress_callback=None):
             else:
                 print(f"  {i}. {row['name']}: {row['roi']:+.2f}% ROI")
     
-    # Clean up generated algorithms
-    print("\n🧹 STEP 4: Cleaning up generated algorithms")
-    print("-" * 40)
-    base_gen = Path(__file__).resolve().parent / "generate_algo"
-    if base_gen.exists() and base_gen.is_dir():
-        try:
-            shutil.rmtree(base_gen)
-            print(f"✅ Successfully deleted folder: {base_gen}")
-        except Exception as e:
-            print(f"❌ Error deleting folder {base_gen}: {e}")
+    # Keep generated algorithms for inspection and reuse (no cleanup)
 
     # Return results for API
     return {

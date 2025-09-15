@@ -8,7 +8,6 @@ import random
 
 # Import the main function from your model fetching script
 from model_fecthing import get_models_to_use
-
 # Load environment variables from a .env file
 load_dotenv()
 
@@ -29,63 +28,172 @@ def list_available_stocks(data_dir: str) -> list:
     except Exception:
         return []
 
+ 
+    
+def _wrap_code_if_missing_func(code: str) -> str:
+    """Ensure the returned code defines execute_trade; wrap if missing."""
+    if code and 'def execute_trade' not in code:
+        return (
+            "def execute_trade(ticker, cash_balance, shares_held):\n"
+            "    # Wrapped fallback if model omitted function signature\n"
+            "    try:\n"
+            "        pass\n"
+            "    except Exception:\n"
+            "        return 'HOLD'\n"
+            "    return 'HOLD'\n"
+        )
+    return code
+
+
+def _generate_fallback_code(ticker: str, model_id: str) -> str:
+    """Produce a safe, diversified minimal algorithm using yfinance when API is unavailable.
+    Diversification is seeded by model_id to yield different windows/thresholds per agent.
+    """
+    seed_int = int(hashlib.md5(model_id.encode()).hexdigest()[:8], 16)
+    rng = random.Random(seed_int)
+    # Vary period/interval and windows
+    period = rng.choice(['5d', '10d', '30d'])
+    interval = rng.choice(['1m', '5m', '15m'])
+    fast = rng.choice([5, 7, 9, 11])
+    slow = rng.choice([15, 21, 27, 33, 45])
+    # Ensure slow > fast
+    if slow <= fast:
+        slow = fast + rng.choice([8, 12, 20])
+    buy_mult = 1.0 + rng.uniform(0.0003, 0.0012)  # 3-12 bps
+    sell_mult = 1.0 - rng.uniform(0.0003, 0.0012)
+    use_rsi = rng.choice([True, False])
+    rsi_win = rng.choice([7, 10, 14, 21])
+    cache_name = f"_fb_{hashlib.md5((model_id+'-cache').encode()).hexdigest()[:6]}"
+
+    code = [
+        "import yfinance as yf",
+        "import numpy as np",
+        f"{cache_name} = {{}}",
+        "",
+        "def execute_trade(ticker, cash_balance, shares_held):",
+        f"    global {cache_name}",
+        "    try:",
+        f"        if ticker not in {cache_name}:",
+        f"            {cache_name}[ticker] = yf.download(ticker, period='{period}', interval='{interval}', progress=False)",
+        f"        df = {cache_name}.get(ticker)",
+        "        if df is None or len(df) < 20:",
+        "            return 'HOLD'",
+        "        close_prices = df['Close'].values.flatten()",
+        "        n = len(close_prices)",
+        "        if n < max(20, %d):" % (max(fast, slow)),
+        "            return 'HOLD'",
+        f"        ma_fast = float(np.mean(close_prices[-{fast}:]))",
+        f"        ma_slow = float(np.mean(close_prices[-{slow}:]))",
+        "        if np.isnan(ma_fast) or np.isnan(ma_slow):",
+        "            return 'HOLD'",
+    ]
+
+    if use_rsi:
+        code += [
+            f"        # RSI filter",
+            f"        if n < {rsi_win}:",
+            "            return 'HOLD'",
+            f"        deltas = np.diff(close_prices[-({rsi_win}+1):])",
+            "        ups = np.sum(deltas[deltas > 0])",
+            "        downs = -np.sum(deltas[deltas < 0])",
+            "        if downs <= 0:",
+            "            return 'HOLD'",
+            "        rs = ups / downs",
+            "        rsi = 100.0 - (100.0 / (1.0 + rs))",
+            "        if np.isnan(rsi):",
+            "            return 'HOLD'",
+        ]
+
+    code += [
+        f"        if ma_fast > ma_slow * {buy_mult:.6f}",
+        "            return 'BUY'",
+        f"        if ma_fast < ma_slow * {sell_mult:.6f}",
+        "            return 'SELL'",
+        "        return 'HOLD'",
+        "    except Exception:",
+        "        return 'HOLD'",
+    ]
+
+    return "\n".join(code) + "\n"
+
+
+def _save_code_for_model(code: str, model_name: str):
+    safe_name = model_name.replace('/', '_').replace('-', '_').replace(':', '_').replace('.', '_')
+    save_algorithm_to_file(code, safe_name)
+
+
 def generate_algorithms_for_agents(selected_agents, ticker, progress_callback=None):
-    """Generate algorithms for specific agents (API-driven)"""
-    if not API_KEY:
-        print("❌ OPENROUTER_API_KEY not found in environment variables")
-        return
-    
-    print(f"🎯 Generating algorithms for {len(selected_agents)} agents using {ticker} data")
-    print(f"✅ Using {len(selected_agents)} models selected from frontend")
-    
-    # Use the selected agents directly (no interactive selection)
-    models_to_use = selected_agents
-    if not models_to_use:
-        print("❌ No models provided for generation")
-        return
-    
-    # Generate algorithm for each selected agent
+    """Generate algorithms for specific agents via API only (no local fallbacks).
+    Returns True only if all agents produced valid code containing execute_trade.
+    """
+    total = len(selected_agents or [])
+    print(f"[gen] Generating algorithms for {total} agents using {ticker} data")
+    print(f"[ok] Using {total} models selected from frontend")
+
+    if not selected_agents:
+        print("\u274c No models provided for generation")
+        if progress_callback:
+            progress_callback(35, "No models provided for generation")
+        return False
+
+    # Load dataset preview for prompt context
+    csv_path = os.path.join(DATA_DIR, f"{ticker}_data.csv")
+    csv_preview = load_csv_preview(csv_path) if os.path.exists(csv_path) else ""
+    base_prompt = build_generation_prompt(ticker, csv_preview)
+
+    api_available = bool(API_KEY)
+    if not api_available:
+        msg = "OPENROUTER_API_KEY not found. Cannot generate algorithms."
+        print(f"\u274c {msg}")
+        if progress_callback:
+            progress_callback(40, msg)
+        return False
+
+    failures = []
+    saved = 0
     for i, agent_model in enumerate(selected_agents):
         try:
+            step_prog = 30 + int((i / max(1, total)) * 25)  # distribute 30-55%
             if progress_callback:
-                progress = 30 + (i * 5)  # 30-55% for algorithm generation
-                progress_callback(progress, f"Generating algorithm {i+1}/6 using {agent_model}...")
-            
-            print(f"\n🔄 Generating algorithm {i+1}/6 using {agent_model}...")
-            
-            # Build prompt for this specific model and ticker
-            # Load CSV preview for the selected ticker
-            csv_path = os.path.join(DATA_DIR, f"{ticker}_data.csv")
-            csv_preview = load_csv_preview(csv_path) if os.path.exists(csv_path) else ""
-            prompt = build_generation_prompt(ticker, csv_preview)
-            
-            # Generate algorithm
-            algorithm_code = generate_algorithm(agent_model, prompt)
-            
-            if algorithm_code:
-                # Create output directory if it doesn't exist
-                os.makedirs(OUTPUT_DIR, exist_ok=True)
-                
-                # Save algorithm with model name (sanitize filename)
-                safe_name = agent_model.replace('/', '_').replace('-', '_').replace(':', '_').replace('.', '_')
-                filename = f"generated_algo_{safe_name}.py"
-                filepath = os.path.join(OUTPUT_DIR, filename)
-                
-                with open(filepath, 'w') as f:
-                    f.write(algorithm_code)
-                
-                print(f"✅ Saved: {filename}")
-                print(f"📁 Path: {os.path.abspath(filepath)}")
-            else:
-                print(f"❌ Failed to generate algorithm for {agent_model}")
-                
+                progress_callback(step_prog, f"Generating algorithm {i+1}/{total} using {agent_model}...")
+            print(f"\nGenerating algorithm {i+1}/{total} using {agent_model}...")
+
+            code = None
+            per_model_prompt = base_prompt + build_diversity_directives(agent_model)
+            code = generate_algorithm(agent_model, per_model_prompt)
+            # Require a proper execute_trade from the model
+            if not code or 'def execute_trade' not in code:
+                print(f"[error] Missing valid execute_trade in response for {agent_model}")
+                failures.append(agent_model)
+                continue
+
+            # Emit a short preview snippet to the API progress stream for UX
+            if progress_callback and code:
+                try:
+                    snippet_lines = code.splitlines()[:24]
+                    preview = "\n".join(snippet_lines)
+                    progress_callback(step_prog, f"PREVIEW::{agent_model}::{preview}")
+                except Exception:
+                    pass
+
+            _save_code_for_model(code, agent_model)
+            saved += 1
         except Exception as e:
-            print(f"❌ Error generating algorithm for {agent_model}: {e}")
-    
+            print(f"[error] Error generating algorithm for {agent_model}: {e}")
+            failures.append(agent_model)
+
+    if failures or saved != total:
+        msg = f"Algorithm generation failed for: {', '.join(failures)}" if failures else "Algorithm generation incomplete"
+        print(f"\u274c {msg}")
+        if progress_callback:
+            progress_callback(55, msg)
+        return False
+
     if progress_callback:
         progress_callback(55, "All algorithms generated successfully!")
-    
-    print(f"\n🎉 Algorithm generation completed for {ticker}")
+
+    print(f"\n[done] Algorithm generation completed for {ticker}")
+    return True
 
 def select_stock_file() -> tuple:
     """Interactively ask the user to pick a stock CSV. Returns (ticker, filename, full_path)."""
@@ -146,79 +254,68 @@ def load_csv_preview(csv_path: str, max_rows: int = 200) -> str:
         return ""
 
 def build_generation_prompt(ticker: str, csv_preview: str) -> str:
-    """Build a dynamic prompt that instructs the model and includes selected stock context."""
+    """Build a dynamic prompt that instructs the model and enforces high diversity across agents."""
     base = f"""
-You are an expert quantitative trading algorithm developer. Your task is to write a Python function `execute_trade(ticker, cash_balance, shares_held)` that decides whether to BUY, SELL, or HOLD a stock based on its recent historical data. You must use the `yfinance` library to get the latest historical data for the given ticker.
+You are an expert quantitative trading researcher. Write a single Python function `execute_trade(ticker, cash_balance, shares_held)` that returns one of: "BUY", "SELL", or "HOLD".
 
-**Function Signature:**
-`def execute_trade(ticker: str, cash_balance: float, shares_held: int) -> str:`
-2) Return ONLY: "BUY", "SELL", or "HOLD"
-3) Output ONLY raw Python code - no markdown, comments, or explanations
-4) MUST use yfinance to get REAL market data - NO fake prices or random numbers
+Contract:
+- Signature: `def execute_trade(ticker: str, cash_balance: float, shares_held: int) -> str`
+- Return ONLY one of: BUY | SELL | HOLD (uppercase, no punctuation)
+- Output MUST be only raw Python code (no markdown/comments)
+- Use real market data via yfinance; no synthetic prices or randomness
 
-CRITICAL ERROR PREVENTION RULES:
-- ALWAYS use .flatten() when extracting numpy arrays from pandas DataFrames
-- ALWAYS check array lengths before using np.convolve() or similar functions
-- ALWAYS handle division by zero and NaN values
-- ALWAYS use proper variable naming (no Unicode characters, consistent naming)
-- ALWAYS validate data exists before performing calculations
+Data requirements:
+- `import yfinance as yf` and download data with period/interval consistent with DIRECTIVES below; always set `progress=False`
+- Use `close_prices = df['Close'].values.flatten()` for arrays and check lengths before computations
+- Avoid pandas-heavy ops in the decision path; prefer numpy/array operations
+- Cache the dataframe in a module-level dict to avoid repeated downloads (exact cache name provided in DIRECTIVES)
 
-MANDATORY MARKET DATA USAGE:
-- Import yfinance as yf
-- Download real market data for the selected ticker using the period/interval consistent with the chosen DATA PERIOD below. Examples: 5d/1m, 30d/15m, 60d/30m, 90d/1h. Always set progress=False.
-- Use actual Close prices from the downloaded data with .flatten() method
-- NO random.uniform(), NO fake prices, NO using cash_balance as price
+Error safety (mandatory):
+- Guard against empty/short arrays; check `len(close_prices)` before slicing
+- Handle NaN: if any computed value is NaN, return HOLD
+- Prevent division-by-zero; when denominator <= 0, return HOLD
+- Ensure np.convolve or rolling calcs only run with sufficient data; otherwise HOLD
 
-MANDATORY UNIQUENESS RULES (choose ONE approach from each category):
+Diversity and uniqueness mandates:
+- Each model MUST implement a distinct strategy profile chosen from categories below (also reinforced by DIRECTIVES per model)
+- Vary indicators, lookbacks, thresholds, and decision logic; do NOT reuse the example values
+- Be action-oriented: target ~30–50% BUY/SELL overall under typical conditions (not always HOLD)
+- Use variable names prefixed with a unique per-model prefix (provided in DIRECTIVES) and the exact cache variable name provided
 
-STRATEGY TYPE (choose ONE):
-- MEAN REVERSION: Buy when price drops below moving average, sell when above
-- MOMENTUM: Buy when price is rising, sell when falling
-- VOLATILITY: Buy during low volatility, sell during high volatility
-- VOLUME-BASED: Use trading volume to confirm price movements
-- TECHNICAL INDICATORS: RSI, MACD, Bollinger Bands, Stochastic, Williams %R
-- PATTERN RECOGNITION: Support/resistance, breakouts, chart patterns
-- TIME-BASED: Different strategies for different times of day
-- RISK-ADJUSTED: Position sizing based on volatility or drawdown
-- ARBITRAGE: Exploit price differences between time periods
-- CONTRARIAN: Buy when others sell, sell when others buy
+Strategy categories (choose ONE primary focus and may combine with a secondary):
+- MEAN REVERSION (deviations from MA/bands)
+- MOMENTUM/TREND (breakouts, crossovers, slope)
+- VOLATILITY (ATR/StdDev regimes, squeeze/expansion)
+- VOLUME CONFIRMATION (OBV/volume filters)
+- OSCILLATORS (RSI/MACD/Stochastic/Williams %R)
+- TIME REGIME (session time buckets)
+- RISK-ADJUSTED (volatility scaling, drawdown guards)
 
-DATA PERIOD (choose ONE):
-- SHORT-TERM: 5-10 days (intraday patterns)
-- MEDIUM-TERM: 15-30 days (weekly patterns)
-- LONG-TERM: 45-90 days (monthly patterns)
-- MIXED: Combine multiple timeframes
+Period/interval options (choose ONE):
+- SHORT: 5–10 days intraday (e.g., 5d/1m, 10d/1m)
+- MEDIUM: 15–45 days (e.g., 30d/15m, 45d/30m)
+- LONG: 60–90 days (e.g., 60d/30m, 90d/1h)
+- MIXED: compute features from multiple downloads (keep minimal and cache separately)
 
-INDICATOR COMBINATION (choose ONE):
-- SINGLE INDICATOR: Use only one technical indicator
-- DUAL CROSSOVER: Two moving averages or oscillators
-- MULTI-FACTOR: Combine 3+ different indicators
-- CUSTOM METRIC: Create your own unique calculation
+Indicator combination (choose ONE):
+- SINGLE INDICATOR
+- DUAL CROSSOVER
+- MULTI-FACTOR (3+ signals combined)
+- CUSTOM METRIC (design your own)
 
-THRESHOLD VALUES (choose ONE set):
-- AGGRESSIVE: 0.001-0.005 (frequent trading)
-- MODERATE: 0.005-0.015 (balanced approach)
-- CONSERVATIVE: 0.015-0.030 (selective trading)
-- ADAPTIVE: Dynamic thresholds based on market conditions
+Threshold style (choose ONE):
+- AGGRESSIVE (frequent trades)
+- MODERATE (balanced)
+- CONSERVATIVE (selective)
+- ADAPTIVE (based on recent volatility)
 
-CACHE VARIABLE NAMES (MUST be unique):
-- Use completely different variable names than other models
-- Examples: _my_unique_cache, _strategy_data, _price_history, _market_cache, etc.
-- NO generic names like _cache, _data, _df
+Implementation guidance:
+- Derive windows from array length or provided parameters; avoid the sample `window=10`
+- Prefer prime or non-trivial window choices (e.g., 7/11/19) and parameterize with provided DIRECTIVES
+- Gate signals with sanity checks (trend filter, volatility floor, volume confirm) to reduce noise
+- Keep the function pure (no printing, no files, no globals except the cache dict)
 
-TRADING LOGIC (choose ONE):
-- ALWAYS BUY/SELL: Return BUY or SELL whenever conditions are met
-- CONDITIONAL: Only trade when multiple conditions align
-- PROBABILISTIC: Use probability-based decisions (but never random price data)
-- THRESHOLD-BASED: Different thresholds for different market conditions
-
-PORTFOLIO MANAGEMENT (choose ONE):
-- AGGRESSIVE: Trade with most available cash/stock
-- CONSERVATIVE: Trade small amounts, preserve capital
-- BALANCED: Moderate position sizes
-- ADAPTIVE: Adjust based on current portfolio value
-
-EXAMPLE TEMPLATE (adapt but make it unique):
+Example pattern (do NOT copy values; adapt logic safely):
 import yfinance as yf
 import numpy as np
 
@@ -226,63 +323,36 @@ _unique_cache = {{}}
 
 def execute_trade(ticker, cash_balance, shares_held):
     global _unique_cache
-
-    # Get real market data
     if ticker not in _unique_cache:
         _unique_cache[ticker] = yf.download(ticker, period="5d", interval="1m", progress=False)
-
     df = _unique_cache.get(ticker)
     if df is None or len(df) < 20:
         return "HOLD"
-
-    # Use REAL close prices with proper array handling
-    close_prices = df['Close'].values.flatten()  # ALWAYS use .flatten()
-    if len(close_prices) == 0:
+    close_prices = df['Close'].values.flatten()
+    if len(close_prices) < 20:
         return "HOLD"
-    
-    current_price = float(close_prices[-1])
+    # compute indicators...
+    return "HOLD"
 
-    # Example: Simple moving average with proper validation
-    window = 10
-    if len(close_prices) < window:
-        return "HOLD"
-    
-    # Calculate moving average safely
-    ma = np.mean(close_prices[-window:])
-    
-    # Safe comparison with NaN check
-    if np.isnan(ma) or np.isnan(current_price):
-        return "HOLD"
-    
-    # Your unique strategy here...
-    return "HOLD"  # Replace with your logic
+You will ALSO receive DIRECTIVES below that specify a unique cache name, variable prefix, period/interval, and required parameter values for THIS model. You MUST follow them exactly.
 
-NOW CREATE A COMPLETELY UNIQUE ALGORITHM FOR TICKER {ticker}:
-- Choose DIFFERENT combinations from each category above
-- Use DIFFERENT mathematical formulas and calculations
-- Implement DIFFERENT decision-making logic
-- Make it AGGRESSIVE (return BUY/SELL 30-50% of the time)
-- Use UNIQUE variable names and cache structures
-- MUST use real market data from yfinance
+Now create a UNIQUE algorithm for ticker {ticker} following the DIRECTIVES.
 
-CRITICAL IMPLEMENTATION REQUIREMENTS:
-1. ALWAYS use close_prices = df['Close'].values.flatten() for price arrays
-2. ALWAYS check if len(close_prices) >= required_length before calculations
-3. ALWAYS handle NaN values: if np.isnan(value): return "HOLD"
-4. ALWAYS handle division by zero: if denominator == 0: return "HOLD"
-5. For np.convolve(): ensure input array is 1D and has sufficient length
-6. For moving averages: use np.mean() instead of complex convolution when possible
-7. Use consistent ASCII variable names (no Unicode characters)
-8. Always validate data exists before mathematical operations
+CRITICAL checks list:
+1) Use `close_prices = df['Close'].values.flatten()`
+2) Check `len(close_prices) >= needed_window` before slicing
+3) Handle NaNs and division-by-zero by returning HOLD
+4) Keep names ASCII-only; use the provided prefix for all new variables
+5) Actionable: aim for ~30–50% BUY/SELL overall (avoid always HOLD)
 
-CONTEXT: Here is a preview of the local historical dataset for {ticker} (header + last rows) to help calibrate thresholds. Do NOT invent prices or rely on this as the data source; still fetch yfinance data for decisions.
+Context preview (local CSV tail for calibration; still fetch with yfinance):
 """
     if csv_preview:
         base += f"\n```\n{csv_preview}\n```\n"
     return base
 
 def build_diversity_directives(model_id: str) -> str:
-    """Create deterministic per-model directives to enforce diverse strategies."""
+    """Create deterministic per-model directives to enforce diverse strategies with concrete parameters."""
     # Deterministic seed from model_id
     seed_int = int(hashlib.md5(model_id.encode()).hexdigest()[:8], 16)
     rng = random.Random(seed_int)
@@ -314,19 +384,45 @@ def build_diversity_directives(model_id: str) -> str:
     var_prefix = f"v{hashlib.md5((model_id+'-vars').encode()).hexdigest()[:6]}_"
     cache_name = f"_{var_prefix}cache"
 
+    # Deterministic numeric parameters
+    fast_ma = rng.choice([5, 7, 9, 11])
+    slow_ma = rng.choice([20, 30, 45, 60])
+    rsi_win = rng.choice([7, 10, 14, 21])
+    bb_win = rng.choice([12, 18, 20, 24])
+    vol_lb = rng.choice([15, 30, 45])
+    use_rsi = rng.choice([True, False])
+    use_bbands = rng.choice([True, False])
+    use_vol_confirm = rng.choice([True, False])
+
     # Build explicit directives
     dir_text = f"""
 
 MANDATORY PER-MODEL DIRECTIVES (for model: {model_id}):
-- You MUST implement STRATEGY TYPE = {strat}
-- You MUST implement DATA PERIOD = {period_label} using yf.download(..., period="{period_val}", interval="{interval_val}")
-- You MUST implement INDICATOR COMBINATION = {combo}
-- You MUST implement THRESHOLD VALUES = {thresh}
-- You MUST implement TRADING LOGIC = {logic}
-- You MUST implement PORTFOLIO MANAGEMENT = {port}
-- You MUST use a UNIQUE cache variable named exactly: {cache_name}
-- You MUST use unique variable names prefixed with: {var_prefix}
-- You MUST return BUY/SELL in roughly 30-50% of calls (be actionable, not overly conservative)
+- STRATEGY TYPE = {strat}
+- DATA PERIOD = {period_label} using yf.download(..., period="{period_val}", interval="{interval_val}")
+- INDICATOR COMBINATION = {combo}
+- THRESHOLD STYLE = {thresh}
+- LOGIC STYLE = {logic}
+- PORTFOLIO STYLE = {port}
+- CACHE VARIABLE NAME = {cache_name} (use exactly this name)
+- VARIABLE PREFIX = {var_prefix} (prefix all your new variables)
+- TARGET ACTION RATE = ~30–50% BUY/SELL under typical conditions
+
+MODEL-SPECIFIC PARAMETERS (use these exact values when applicable):
+- FAST_MA = {fast_ma}
+- SLOW_MA = {slow_ma}
+- RSI_WINDOW = {rsi_win} (use only if `USE_RSI = True`)
+- BB_WINDOW = {bb_win} (use only if `USE_BBANDS = True`)
+- VOL_LOOKBACK = {vol_lb}
+- USE_RSI = {use_rsi}
+- USE_BBANDS = {use_bbands}
+- USE_VOLUME_CONFIRM = {use_vol_confirm}
+
+Implementation notes:
+- Download period/interval exactly as specified
+- Use the cache variable name exactly as provided and populate it per ticker
+- Prefer these parameter values over any defaults; avoid example values from the prompt
+- Ensure all computations check array length and NaN safety before use
 """
     return dir_text
 
@@ -367,11 +463,10 @@ def save_algorithm_to_file(code, model_name):
         # Sanitize the model name to create a valid filename (e.g., replace '/' with '_')
         safe_filename = model_name.replace('/', '_')
         output_path = os.path.join(OUTPUT_DIR, f'generated_algo_{safe_filename}.py')
-        
-        with open(output_path, 'w') as f:
+        with open(output_path, 'w', encoding='utf-8') as f:
             f.write(code)
         print(f"✅ Algorithm successfully saved to: {os.path.abspath(output_path)}")
-    except IOError as e:
+    except Exception as e:
         print(f"❌ FAILED to save algorithm for {model_name}.\n   Error: {e}")
 
 # --- 3. Main Execution ---

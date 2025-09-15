@@ -112,8 +112,20 @@ def run_simulation_background(sim_id, agents, stock_file):
         
         # Run the simulation with progress callback
         def progress_callback(progress, message):
-            running_simulations[sim_id]["progress"] = progress
-            running_simulations[sim_id]["message"] = message
+            # Support special preview messages: "PREVIEW::<model>::<code>"
+            try:
+                if isinstance(message, str) and message.startswith("PREVIEW::"):
+                    parts = message.split("::", 2)
+                    if len(parts) == 3:
+                        _tag, model, code = parts
+                        running_simulations[sim_id]["preview_model"] = model
+                        running_simulations[sim_id]["code_preview"] = code
+                else:
+                    running_simulations[sim_id]["message"] = message
+                running_simulations[sim_id]["progress"] = progress
+            except Exception as _:
+                running_simulations[sim_id]["progress"] = progress
+                running_simulations[sim_id]["message"] = str(message)
         
         results = run_simulation_with_params(agents, ticker, progress_callback)
         

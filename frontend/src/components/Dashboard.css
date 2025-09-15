@@ -130,6 +130,163 @@
   overflow: hidden; /* Ensure dropdowns aren't clipped */
 }
 
+/* Instructions content inside center box */
+.instructions {
+  color: #ffffff;
+  font-family: 'Rajdhani', sans-serif;
+  padding: 28px 28px 100px 28px; /* leave room for start button overlap */
+  height: 100%;
+  overflow-y: auto;
+}
+
+.instructions h2 {
+  margin: 10px 0 12px 0;
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #FFD60A;
+}
+
+.instructions h3 {
+  margin: 18px 0 8px 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #FFC300;
+}
+
+.instructions p {
+  margin: 0 0 12px 0;
+  line-height: 1.5;
+  color: #e6f0ff;
+}
+
+.instructions ol,
+.instructions ul {
+  margin: 0 0 12px 20px;
+  padding: 0;
+}
+
+.instructions li {
+  margin: 6px 0;
+}
+
+.instructions .tips {
+  background: rgba(0, 29, 61, 0.5);
+  border: 1px solid #004d7a;
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.instructions .tip-title {
+  display: inline-block;
+  font-weight: 800;
+  color: #FFD60A;
+  margin-bottom: 6px;
+}
+
+/* Progress panel when running */
+.progress-panel {
+  color: #ffffff;
+  font-family: 'Rajdhani', sans-serif;
+  padding: 28px;
+  height: 100%;
+  overflow-y: auto;
+  background: transparent; /* keep center box color visible */
+}
+
+.progress-panel h2 {
+  margin: 10px 0 16px 0;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #FFD60A;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 12px;
+  background: rgba(0, 29, 61, 0.6);
+  border: 1px solid #004d7a;
+  border-radius: 999px;
+  overflow: hidden;
+  box-shadow: inset 0 0 8px rgba(0,0,0,0.2);
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #00b4d8, #90e0ef);
+  transition: width 0.4s ease;
+}
+
+.current-task {
+  margin: 10px 0 16px 0;
+  color: #e6f0ff;
+}
+
+.gen-list {
+  margin-top: 8px;
+  border-top: 1px solid #004d7a;
+  padding-top: 10px;
+}
+
+.gen-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 6px;
+  border-radius: 8px;
+}
+
+.gen-item .status {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 0.9rem;
+}
+
+.gen-item.pending .status { background: rgba(255, 255, 255, 0.1); }
+.gen-item.generating .status { background: rgba(255, 195, 0, 0.25); }
+.gen-item.done .status { background: rgba(0, 255, 127, 0.25); }
+
+.gen-item .model-name {
+  color: #ffffff;
+}
+
+.gen-empty {
+  color: #cbd5e1;
+  font-style: italic;
+}
+
+/* Code preview */
+.code-preview {
+  margin-top: 14px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid #004d7a;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.code-preview-header {
+  background: rgba(0, 29, 61, 0.8);
+  color: #FFD60A;
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 700;
+  padding: 8px 12px;
+  border-bottom: 1px solid #004d7a;
+}
+
+.code-preview pre {
+  margin: 0;
+  padding: 12px;
+  color: #e6f0ff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.85rem;
+  max-height: 220px;
+  overflow: auto;
+  background: transparent;
+}
+
 /* Side elements - half visible rounded rectangles */
 .side-element {
   position: absolute;
@@ -326,6 +483,27 @@
   margin-top: 20px;
 }
 
+.results-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: 12px 0 4px 0;
+}
+
+.back-button {
+  background: #FFD60A;
+  color: #003566;
+  font-weight: 700;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.2s ease;
+}
+.back-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(255, 214, 10, 0.35);
+}
+
 .leaderboard-item {
   display: flex;
   align-items: center;
@@ -389,7 +567,7 @@
   
   .center-box {
     width: 80%;
-    height: 35%;
+  height: 45%;
   }
   
   .side-element {

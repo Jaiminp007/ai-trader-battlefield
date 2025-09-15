@@ -23,6 +23,8 @@ class SimulationConfig:
     enable_order_book: bool = True
     initial_cash: float = 10000.0
     initial_stock: int = 0
+    # Extra inventory for liquidity providers (by name prefix 'Liquidity_')
+    mm_initial_stock: int = 100
     # Margin and short selling settings
     allow_negative_cash: bool = False
     cash_borrow_limit: float = 0.0   # Max magnitude of negative cash allowed
@@ -62,6 +64,12 @@ class MarketSimulation:
             try:
                 if getattr(self.config, "initial_stock", 0) > 0:
                     self.agent_manager.portfolios[agent.name].stock = int(self.config.initial_stock)
+                # Provide additional seed inventory for designated liquidity providers
+                if str(agent.name).startswith("Liquidity_") and getattr(self.config, "mm_initial_stock", 0) > 0:
+                    self.agent_manager.portfolios[agent.name].stock = max(
+                        int(self.agent_manager.portfolios[agent.name].stock),
+                        int(self.config.mm_initial_stock)
+                    )
             except Exception:
                 pass
         # Propagate margin/short settings
@@ -213,8 +221,7 @@ class MarketSimulation:
                         effective_stock += int(self.agent_manager.max_short_shares)
                     available_stock = int(max(0, effective_stock))
                     if available_stock <= 0:
-                        if log and self.config.log_orders:
-                            print(f"🚫 {agent_name} SELL skipped: insufficient stock for {qty_requested}")
+                        # Quietly skip when capacity is exhausted (avoid noisy logs)
                         continue
                     qty = min(qty_requested, available_stock)
                     if qty <= 0:
