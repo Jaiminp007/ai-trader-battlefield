@@ -325,7 +325,14 @@ def run_market_simulation(symbol, progress_callback=None):
             else:
                 print(f"  {i}. {row['name']}: {row['roi']:+.2f}% ROI")
     
-    # Keep generated algorithms for inspection and reuse (no cleanup)
+    # Cleanup: delete generated algorithms after simulation
+    try:
+        gen_dir = Path(__file__).resolve().parent / "generate_algo"
+        if gen_dir.exists() and gen_dir.is_dir():
+            shutil.rmtree(gen_dir, ignore_errors=True)
+            print("🧹 Cleaned up generated algorithms folder.")
+    except Exception as ce:
+        print(f"⚠️ Cleanup warning: {ce}")
 
     # Return results for API
     return {
