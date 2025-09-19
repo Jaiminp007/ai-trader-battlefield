@@ -8,8 +8,16 @@ import random
 
 # Import the main function from your model fetching script
 from model_fecthing import get_models_to_use
-# Load environment variables from a .env file
-load_dotenv()
+# Load environment variables from a .env file (explicit backend path for reliability)
+try:
+    # First, try default discovery (current CWD and parents)
+    load_dotenv()
+    # Then, explicitly load backend/.env relative to this file
+    _backend_env = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env'))
+    if os.path.exists(_backend_env):
+        load_dotenv(_backend_env)
+except Exception:
+    pass
 
 # --- 1. Configuration ---
 API_KEY = os.getenv('OPENROUTER_API_KEY')

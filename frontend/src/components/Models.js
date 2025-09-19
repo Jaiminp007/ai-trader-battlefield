@@ -8,6 +8,7 @@ import qwenIcon from '../assets/qwen.png';
 import mistralIcon from '../assets/mistral.png';
 import deepseekIcon from '../assets/deepseek.png';
 import grokIcon from '../assets/grok.png';
+import openrouterIcon from '../assets/openrouter.png';
 
 const modelAssets = [
 	{ label: 'OpenAI', img: openaiIcon },
@@ -18,6 +19,7 @@ const modelAssets = [
 	{ label: 'Anthropic', img: anthropicIcon },
 	{ label: 'Qwen', img: qwenIcon },
 	{ label: 'Grok', img: grokIcon },
+	{ label: 'OpenRouter', img: openrouterIcon },
 ];
 
 const Models = () => {

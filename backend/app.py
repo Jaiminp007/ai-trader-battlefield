@@ -5,6 +5,17 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import threading
 import time
+import shutil
+
+# Ensure backend/.env is loaded when running the Flask app
+try:
+    from dotenv import load_dotenv
+    load_dotenv()  # CWD
+    _env_path = Path(__file__).resolve().parent / '.env'
+    if _env_path.exists():
+        load_dotenv(_env_path)
+except Exception:
+    pass
 
 app = Flask(__name__)
 CORS(app)
@@ -54,9 +65,9 @@ def run_simulation():
         agents = data.get('agents', [])
         stock = data.get('stock', 'AAPL_data.csv')
         
-        # Validate we have 6 agents
-        if len(agents) != 6:
-            return jsonify({"error": "Exactly 6 agents required"}), 400
+        # Validate we have at least 2 agents
+        if len(agents) < 2:
+            return jsonify({"error": "At least 2 agents are required"}), 400
             
         # Generate unique simulation ID
         sim_id = f"sim_{int(time.time())}"
@@ -141,6 +152,22 @@ def run_simulation_background(sim_id, agents, stock_file):
         print(f"Simulation error: {e}")
         import traceback
         traceback.print_exc()
+    finally:
+        # Cleanup: remove generated algorithms after each run
+        try:
+            backend_root = Path(__file__).resolve().parent
+            gen_dir = backend_root / "generate_algo"
+            if gen_dir.exists() and gen_dir.is_dir():
+                shutil.rmtree(gen_dir, ignore_errors=True)
+                # Recreate empty directory to avoid import path hiccups if any
+                try:
+                    gen_dir.mkdir(parents=True, exist_ok=True)
+                except Exception:
+                    pass
+                running_simulations[sim_id]["message"] = (running_simulations[sim_id].get("message") or "") + "\n🧹 Cleaned generated algorithms."
+        except Exception as ce:
+            # Log cleanup failure but do not crash
+            print(f"Cleanup error: {ce}")
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))

@@ -10,6 +10,7 @@ import metaIcon from '../assets/meta.png';
 import mistralIcon from '../assets/mistral.png';
 import openaiIcon from '../assets/openai.png';
 import qwenIcon from '../assets/qwen.png';
+import openrouterIcon from '../assets/openrouter.png';
 
 const imageMap = {
   'Anthropic': anthropicIcon,
@@ -19,7 +20,8 @@ const imageMap = {
   'Meta': metaIcon,
   'Mistral': mistralIcon,
   'OpenAI': openaiIcon,
-  'Qwen': qwenIcon
+  'Qwen': qwenIcon,
+  'OpenRouter': openrouterIcon
 };
 
 const CustomDropdown = ({ agents, selected, onSelect, disabledAgents = new Set() }) => {
